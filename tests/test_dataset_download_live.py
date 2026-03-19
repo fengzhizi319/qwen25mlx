@@ -18,8 +18,21 @@ def test_real_download_and_split_e2e(monkeypatch: pytest.MonkeyPatch) -> None:
     if os.environ.get("RUN_REAL_DOWNLOAD_UT") != "1":
         pytest.skip("默认跳过真实下载 UT；设置 RUN_REAL_DOWNLOAD_UT=1 后执行。")
 
+    '''
+    datasets是HuggingFace提供的一个Python数据集库，常用于：
+    。下载公开数据集
+    。读取本地 / 远程数据
+    。对数据做切分、过滤、映射、打乱
+    。方便训练、评估、测试机器学习模型
+    它的核心特点是：
+    。统一接口
+    。支持流式 / 懒加载    
+    。和Hugging Face生态集成很好很适合
+    。NLP / LLM训练前的数据处理
+    '''
+    # 依赖存在 → 继续测试
+    # 依赖不存在 → 自动跳过测试
     pytest.importorskip("datasets")
-
     out_dir = Path("datasets") / "live_ut"
     out_train = out_dir / "train.jsonl"
     out_eval = out_dir / "eval.jsonl"
@@ -30,7 +43,17 @@ def test_real_download_and_split_e2e(monkeypatch: pytest.MonkeyPatch) -> None:
         raise ValueError("RUN_REAL_DOWNLOAD_MAX_SAMPLES 必须大于 1。")
 
     out_dir.mkdir(parents=True, exist_ok=True)
-
+    '''
+    1) monkeypatch.setattr 是什么
+       monkeypatch.setattr 是 pytest 提供的测试工具，用来：
+       在测试期间临时替换某个对象的属性/方法，测试结束后自动恢复。
+       它常用于：
+       替换全局变量
+       mock 掉函数
+       修改 sys.argv
+       替换环境里某个模块的行为
+    2) 把当前测试进程里的 sys.argv 临时替换成你给的命令行参数列表。
+    '''
     monkeypatch.setattr(
         "sys.argv",
         [

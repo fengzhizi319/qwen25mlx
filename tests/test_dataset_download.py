@@ -74,6 +74,7 @@ def test_main_raises_on_invalid_eval_ratio(monkeypatch: pytest.MonkeyPatch) -> N
 def test_download_and_split_dataset_integration(
     monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    monkeypatch.setenv("RUN_DATASET_DOWNLOAD_TEST", "1")
     """集成测试：可选执行真实下载与切分流程。"""
     if os.environ.get("RUN_DATASET_DOWNLOAD_TEST") != "1":
         pytest.skip("默认跳过真实下载测试；设置 RUN_DATASET_DOWNLOAD_TEST=1 后执行。")
@@ -82,6 +83,10 @@ def test_download_and_split_dataset_integration(
     dataset_dir = Path("datasets")
     out_train = dataset_dir / "train.jsonl"
     out_eval = dataset_dir / "eval.jsonl"
+    # 可通过环境变量调大真实下载 UT 的样本量。
+    max_samples = int(os.environ.get("RUN_REAL_DOWNLOAD_MAX_SAMPLES", "30000"))
+    if max_samples <= 1:
+        raise ValueError("RUN_REAL_DOWNLOAD_MAX_SAMPLES 必须大于 1。")
 
     # 测试前先备份旧文件，避免历史数据影响本次观察。
     backup_existing_dataset_files(dataset_dir)
@@ -95,7 +100,7 @@ def test_download_and_split_dataset_integration(
             "--split",
             "train",
             "--max-samples",
-            "50",
+            str(max_samples),
             "--eval-ratio",
             "0.2",
             "--out-train",
@@ -114,7 +119,7 @@ def test_download_and_split_dataset_integration(
     eval_lines = out_eval.read_text(encoding="utf-8").strip().splitlines()
     assert len(train_lines) > 0
     assert len(eval_lines) > 0
-    assert len(train_lines) + len(eval_lines) <= 50
+    assert len(train_lines) + len(eval_lines) <= max_samples
 
     sample = json.loads(train_lines[0])
     assert set(sample.keys()) == {"instruction", "input", "output"}
