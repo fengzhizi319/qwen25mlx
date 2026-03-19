@@ -1,0 +1,48 @@
+# 使用下载训练集的 TRL 配置示例
+model:
+  model_name_or_path: Qwen/Qwen2.5-0.5B
+  use_fp16: false
+  trust_remote_code: true
+
+experiment:
+  run_name: qwen25-trl-sft-downloaded
+  report_to: none
+  wandb_project: ""
+  wandb_entity: ""
+
+data:
+  train_file: data/downloaded/train.jsonl
+  eval_file: data/downloaded/eval.jsonl
+  max_seq_length: 512
+
+lora:
+  r: 16
+  alpha: 32
+  dropout: 0.05
+  target_modules:
+    - q_proj
+    - k_proj
+    - v_proj
+    - o_proj
+
+training:
+  output_dir: outputs/trl_lora_adapter_downloaded
+  logging_dir: outputs/trl_lora_adapter_downloaded/logs
+  resume_from_checkpoint: none
+  num_train_epochs: 1
+  per_device_train_batch_size: 1
+  per_device_eval_batch_size: 1
+  gradient_accumulation_steps: 4
+  learning_rate: 2.0e-4
+  logging_steps: 10
+  eval_steps: 50
+  save_steps: 50
+  warmup_ratio: 0.03
+  weight_decay: 0.01
+  lr_scheduler_type: cosine
+  save_total_limit: 2
+  load_best_model_at_end: true
+  metric_for_best_model: eval_loss
+  greater_is_better: false
+  seed: 42
+

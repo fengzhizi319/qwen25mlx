@@ -1,0 +1,53 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "qwen25-learning-lab"
+version = "0.1.0"
+description = "Learning project for Qwen2.5-0.5B with TRL and MLX"
+readme = "README.md"
+requires-python = ">=3.10"
+authors = [{ name = "Local Workspace User" }]
+dependencies = [
+  "pyyaml>=6.0",
+]
+
+[project.optional-dependencies]
+trl = [
+  "torch>=2.2",
+  "transformers>=4.45",
+  "datasets>=2.20",
+  "accelerate>=0.33",
+  "peft>=0.12",
+  "trl>=0.10",
+  "huggingface_hub>=0.24",
+  "wandb>=0.17",
+  "bitsandbytes>=0.43; platform_system != 'Darwin'",
+]
+mlx = [
+  "mlx>=0.16",
+  "mlx-lm>=0.18",
+  "huggingface_hub>=0.24",
+]
+dev = [
+  "pytest>=8.2",
+  "ruff>=0.6",
+]
+
+[tool.setuptools]
+package-dir = {"" = "."}
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["src*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+

@@ -1,0 +1,11 @@
+{"instruction":"Explain overfitting in one sentence.","input":"","output":"Overfitting is when a model memorizes training data patterns and performs poorly on new data."}
+{"instruction":"Summarize the paragraph.","input":"Gradient descent updates parameters by moving against the loss gradient.","output":"Gradient descent improves a model by stepping parameters in the direction that reduces loss."}
+{"instruction":"Translate to Chinese.","input":"Machine learning needs good data.","output":"机器学习需要高质量的数据。"}
+{"instruction":"Give two tips for debugging Python code.","input":"","output":"Use small reproducible examples and inspect variables with logging or a debugger."}
+{"instruction":"Rewrite in a formal tone.","input":"We need to fix this bug fast.","output":"This defect should be addressed with high priority."}
+{"instruction":"Classify sentiment.","input":"The tutorial is clear and practical.","output":"positive"}
+{"instruction":"Extract keywords.","input":"LoRA fine-tuning reduces memory usage for large language models.","output":"LoRA, fine-tuning, memory, large language models"}
+{"instruction":"Answer briefly: what is a tokenizer?","input":"","output":"A tokenizer converts text into model-readable tokens."}
+{"instruction":"Generate a bash command to list files.","input":"","output":"ls -la"}
+{"instruction":"Create a JSON object with fields name and score.","input":"name=Alice, score=95","output":"{\"name\": \"Alice\", \"score\": 95}"}
+

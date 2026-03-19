@@ -1,0 +1,16 @@
+model:
+  model_path: Qwen/Qwen2.5-0.5B
+
+training:
+  source_train_file: data/minimal/train.jsonl
+  source_eval_file: data/minimal/eval.jsonl
+  data_dir: data/mlx
+  adapter_path: outputs/mlx_adapters
+  iters: 50
+  batch_size: 1
+  learning_rate: 1.0e-5
+  steps_per_eval: 20
+  steps_per_report: 10
+  save_every: 50
+
+

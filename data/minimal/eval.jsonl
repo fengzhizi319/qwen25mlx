@@ -1,0 +1,4 @@
+{"instruction":"Define precision and recall.","input":"","output":"Precision is the fraction of predicted positives that are correct, and recall is the fraction of actual positives that are found."}
+{"instruction":"Translate to English.","input":"模型需要更多训练轮次。","output":"The model needs more training epochs."}
+{"instruction":"State one benefit of LoRA.","input":"","output":"LoRA reduces trainable parameters, making fine-tuning faster and cheaper."}
+
