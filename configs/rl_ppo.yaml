@@ -1,0 +1,22 @@
+model:
+  model_name_or_path: Qwen/Qwen2.5-0.5B
+  reward_model_path: outputs/reward_model
+
+data:
+  train_file: data/rl/prompts_train.jsonl
+
+lora:
+  r: 16
+  alpha: 32
+  dropout: 0.05
+  target_modules:
+    - q_proj
+    - v_proj
+
+training:
+  output_dir: outputs/ppo_adapter
+  learning_rate: 1.4e-5
+  batch_size: 1
+  mini_batch_size: 1
+  ppo_epochs: 4
+
