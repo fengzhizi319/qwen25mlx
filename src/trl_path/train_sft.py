@@ -163,11 +163,13 @@ def configure_wandb_env(args: argparse.Namespace, cfg: dict) -> None:
         os.environ["WANDB_NAME"] = args.wandb_run_name
 
 
-def main() -> None:
-    """执行 TRL + LoRA 监督微调流程。"""
-    args = parse_args()
-    cfg = load_yaml(args.config)
-
+def run_sft(args: argparse.Namespace, cfg: dict, model=None, tokenizer=None) -> None:
+    """执行 SFT 训练核心逻辑，便于测试调用。
+    :param args: 命令行参数
+    :param cfg: 配置字典
+    :param model: (可选) 预加载或模拟的模型实例，用于测试
+    :param tokenizer: (可选) 预加载或模拟的 tokenizer 实例，用于测试
+    """
     train_ds = build_dataset(cfg["data"]["train_file"])
     eval_ds = build_dataset(cfg["data"]["eval_file"])
 
@@ -189,35 +191,48 @@ def main() -> None:
 
     from datasets import Dataset
     from peft import LoraConfig
-    from transformers import AutoModelForCausalLM, AutoTokenizer, TrainingArguments
-    from trl import SFTTrainer
+    from transformers import AutoModelForCausalLM, AutoTokenizer
+    from trl import SFTTrainer, SFTConfig
 
     train_ds = Dataset.from_list(train_ds)
     eval_ds = Dataset.from_list(eval_ds)
 
     model_name = cfg["model"]["model_name_or_path"]
 
-    tokenizer = AutoTokenizer.from_pretrained(
-        model_name,
-        trust_remote_code=cfg["model"].get("trust_remote_code", True),
-        use_fast=False,
-    )
+    # 优先使用传入的 tokenizer，否则根据配置加载
+    if tokenizer is None:
+        try:
+            tokenizer = AutoTokenizer.from_pretrained(
+                model_name,
+                trust_remote_code=cfg["model"].get("trust_remote_code", True),
+                use_fast=False,
+            )
+        except OSError:
+            # 仅针对测试场景：如果 model_name 是路径且不存在，可能是在跑测试
+            # 但正常情况应该由调用方保证 model_name 有效
+            raise
+
     if tokenizer.pad_token is None:
         # Qwen 某些 tokenizer 无 pad_token，统一回退到 eos_token。
         tokenizer.pad_token = tokenizer.eos_token
 
-    model = AutoModelForCausalLM.from_pretrained(
-        model_name,
-        trust_remote_code=cfg["model"].get("trust_remote_code", True),
-        torch_dtype="auto",
-    )
+    # 优先使用传入的 model，否则根据配置加载
+    if model is None:
+        try:
+            model = AutoModelForCausalLM.from_pretrained(
+                model_name,
+                trust_remote_code=cfg["model"].get("trust_remote_code", True),
+                torch_dtype="auto",
+            )
+        except OSError:
+            raise
 
-    lora_cfg = cfg["lora"]
+    lora_cfg = cfg.get("lora", {})
     peft_config = LoraConfig(
-        r=int(lora_cfg["r"]),
-        lora_alpha=int(lora_cfg["alpha"]),
-        lora_dropout=float(lora_cfg["dropout"]),
-        target_modules=list(lora_cfg["target_modules"]),
+        r=int(lora_cfg.get("r", 16)),
+        lora_alpha=int(lora_cfg.get("alpha", 32)),
+        lora_dropout=float(lora_cfg.get("dropout", 0.05)),
+        target_modules=list(lora_cfg.get("target_modules", ["q_proj", "v_proj"])),
         task_type="CAUSAL_LM",
     )
 
@@ -229,39 +244,73 @@ def main() -> None:
     ):
         configure_wandb_env(args, cfg)
 
-    training_args = TrainingArguments(
+    # 处理 DeprecationWarning: logging_dir -> TENSORBOARD_LOGGING_DIR
+    if logging_dir:
+        os.environ["TENSORBOARD_LOGGING_DIR"] = logging_dir
+
+    # 处理 DeprecationWarning: warmup_ratio -> warmup_steps
+    # 如果配置了 warmup_ratio 且未配置 warmup_steps，则手动计算 steps
+    warmup_ratio = float(training_cfg.get("warmup_ratio", 0.0))
+    warmup_steps = int(training_cfg.get("warmup_steps", 0))
+
+    if warmup_steps == 0 and warmup_ratio > 0:
+        import torch
+        # 简单估算 device 数量（仅用于 silence warning，非精确对齐）
+        num_devices = 1
+        if torch.cuda.is_available():
+            num_devices = torch.cuda.device_count()
+        elif hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
+            num_devices = 1
+        
+        num_epochs = float(training_cfg.get("num_train_epochs", 1.0))
+        batch_size = int(training_cfg.get("per_device_train_batch_size", 1))
+        grad_accum = int(training_cfg.get("gradient_accumulation_steps", 1))
+        
+        # 估算总步数
+        total_steps = (len(train_ds) * num_epochs) / (batch_size * grad_accum * num_devices)
+        warmup_steps = int(total_steps * warmup_ratio)
+        # 确保至少 1 步
+        if warmup_steps < 1:
+            warmup_steps = 1
+
+    # 使用 SFTConfig 替代 TrainingArguments，并传入 SFT 专属参数
+    training_args = SFTConfig(
         output_dir=training_cfg["output_dir"],
         run_name=run_name,
-        logging_dir=logging_dir,
-        num_train_epochs=float(training_cfg["num_train_epochs"]),
-        per_device_train_batch_size=int(training_cfg["per_device_train_batch_size"]),
-        per_device_eval_batch_size=int(training_cfg["per_device_eval_batch_size"]),
-        gradient_accumulation_steps=int(training_cfg["gradient_accumulation_steps"]),
-        learning_rate=float(training_cfg["learning_rate"]),
-        logging_steps=int(training_cfg["logging_steps"]),
-        eval_steps=int(training_cfg["eval_steps"]),
-        save_steps=int(training_cfg["save_steps"]),
-        warmup_ratio=float(training_cfg["warmup_ratio"]),
-        weight_decay=float(training_cfg["weight_decay"]),
-        lr_scheduler_type=str(training_cfg["lr_scheduler_type"]),
+        # logging_dir=logging_dir,  <-- Deprecated，已通过 TENSORBOARD_LOGGING_DIR 设置
+        num_train_epochs=float(training_cfg.get("num_train_epochs", 1.0)),
+        per_device_train_batch_size=int(training_cfg.get("per_device_train_batch_size", 1)),
+        per_device_eval_batch_size=int(training_cfg.get("per_device_eval_batch_size", 1)),
+        gradient_accumulation_steps=int(training_cfg.get("gradient_accumulation_steps", 1)),
+        learning_rate=float(training_cfg.get("learning_rate", 5e-5)),
+        logging_steps=int(training_cfg.get("logging_steps", 10)),
+        eval_steps=int(training_cfg.get("eval_steps", 10)),
+        save_steps=int(training_cfg.get("save_steps", 10)),
+        # warmup_ratio=float(training_cfg.get("warmup_ratio", 0.0)), <-- Deprecated
+        warmup_steps=warmup_steps,
+        weight_decay=float(training_cfg.get("weight_decay", 0.0)),
+        lr_scheduler_type=str(training_cfg.get("lr_scheduler_type", "linear")),
         save_total_limit=int(training_cfg.get("save_total_limit", 2)),
-        load_best_model_at_end=bool(training_cfg.get("load_best_model_at_end", True)),
-        metric_for_best_model=str(training_cfg.get("metric_for_best_model", "eval_loss")),
+        load_best_model_at_end=bool(training_cfg.get("load_best_model_at_end", False)),
+        metric_for_best_model=str(training_cfg.get("metric_for_best_model", "loss")),
         greater_is_better=bool(training_cfg.get("greater_is_better", False)),
         seed=int(training_cfg.get("seed", 42)),
-        evaluation_strategy="steps",
+        eval_strategy="steps",
         save_strategy="steps",
         report_to=resolved_report_to,
         fp16=bool(cfg["model"].get("use_fp16", False)),
+        # SFTConfig 特定参数
+        dataset_text_field="text",
+        max_length=int(cfg["data"].get("max_seq_length", 512)),
+        # 强制使用 CPU 进行测试（如果需要）或自动选择
+        use_cpu=args.use_cpu if hasattr(args, "use_cpu") and args.use_cpu else False,
     )
 
     trainer = SFTTrainer(
         model=model,
-        tokenizer=tokenizer,
+        processing_class=tokenizer,
         train_dataset=train_ds,
         eval_dataset=eval_ds,
-        dataset_text_field="text",
-        max_seq_length=int(cfg["data"]["max_seq_length"]),
         args=training_args,
         peft_config=peft_config,
     )
@@ -273,7 +322,13 @@ def main() -> None:
     print(f"Saved adapter artifacts to: {training_cfg['output_dir']}")
 
 
+def main() -> None:
+    """执行 TRL + LoRA 监督微调流程。"""
+    args = parse_args()
+    cfg = load_yaml(args.config)
+    run_sft(args, cfg)
+
+
 if __name__ == "__main__":
     main()
-
 
